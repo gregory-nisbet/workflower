@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+
+"""Workflower is a best effort local runner of a github workflow.
+
+It will skip over steps it doesn't understand, assume that the OS is
+correct, and just kind of run stuff.
+
+The aim is to give you a semi-useful way to run github workflows in
+real world open source projects so you can see if your local code
+works well enough before pushing a PR for review.
+
+GPLv3 License.
+License Hash: 3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986
+"""
+
+import argparse
+import yaml
+import subprocess
+import sys
+
+parser = argparse.ArgumentParser()
+parser.add_argument("workflows", nargs="*")
+args = parser.parse_args()
+
+###########
+
+
+def returns(typ):
+    """Check whether function returns an instance of TYP"""
+
+    def decorator(wrapped):
+        def wrapper(*args, **kwargs):
+            out = wrapped(*args, **kwargs)
+            assert isinstance(out, typ), f"return has bad type {type(out)}"
+            return out
+
+        return wrapper
+
+    return decorator
+
+
+NoneType = type(None)
+
+###########
+
+
+@returns(list)
+def select_steps_stanza(yamlfile):
+    return yamlfile["jobs"]["build"]["steps"]
+
+
+@returns(NoneType)
+def run_step(step):
+    cmd = [
+        "bash",
+        "-o",
+        "pipefail",
+        "-c",
+        step["run"],
+    ]
+    subprocess.run(cmd)
+
+
+@returns(NoneType)
+def run_once(path):
+    with open(path) as fh:
+        yamlfile = yaml.safe_load(fh)
+    steps = select_steps_stanza(yamlfile)
+    for step in steps:
+        if "run" in step:
+            run_step(step)
+
+
+@returns(int)
+def main(files):
+    for path in files:
+        run_once(path)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(args.workflows))
